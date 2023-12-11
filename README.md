@@ -17,7 +17,8 @@ TerraTick is your cloud-based personal clock. It's designed for simplicity and f
 - Docker: to build application artifacts.
 - Terraform: infrastructure as code (IAC).
 - AWS Lambda: Serverless compute service.
-- AWS API Gateway: To manage our APIs
+- AWS API Gateway: To manage our APIs.
+- Grafana Dashboard: Monitor serverless Flask app.
 # Roadmap
 - Custom Time Calculation apis  with Different Time Zones
 - API Swagger Docs
