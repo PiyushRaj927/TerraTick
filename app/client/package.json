@@ -1,0 +1,23 @@
+{
+	"name": "client",
+	"version": "0.0.1",
+	"private": true,
+	"scripts": {
+		"dev": "vite dev --host",
+		"build": "vite build",
+		"preview": "vite preview",
+		"autobuild": "NODE_ENV=development vite build --watch --mode development"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-auto": "^2.0.0",
+		"@sveltejs/kit": "^1.27.4",
+		"svelte": "^4.2.7",
+		"vite": "^4.4.2"
+	},
+	"type": "module",
+	"dependencies": {
+		"@sveltejs/adapter-static": "^2.0.3",
+		"moment": "^2.29.4",
+		"moment-timezone": "^0.5.43"
+	}
+}

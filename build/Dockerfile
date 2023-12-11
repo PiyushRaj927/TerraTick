@@ -1,5 +1,5 @@
-FROM python:3.10.13-slim
-RUN pip install zappa flask
+FROM nikolaik/python-nodejs:python3.10-nodejs20
+RUN apt update && apt install -y zip
 COPY --chmod=0755 ./entrypoint.sh /
 ENTRYPOINT [ "/entrypoint.sh" ]
 

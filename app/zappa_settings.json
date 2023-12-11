@@ -5,6 +5,8 @@
         "profile_name": "default",
         "project_name": "app",
         "runtime": "python3.8",
-        "s3_bucket": "terra-tick"
+        "s3_bucket": "terra-tick",
+        "exclude_glob": ["client/**"],
+        "log_level": "DEBUG"
     }
 }

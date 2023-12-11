@@ -10,6 +10,7 @@ terraform {
 }
 
 provider "aws" {
+  alias = "main"
   region = "us-east-1"
 }
 
@@ -18,41 +19,24 @@ resource "aws_s3_bucket" "lambda_bucket" {
 }
 
 
-resource "aws_s3_object" "lambda_hello_world" {
+resource "aws_s3_object" "lambda_deployment" {
   bucket = aws_s3_bucket.lambda_bucket.id
 
-  key    = "hello-world.zip"
+  key    = "lambda_deployment.zip"
   source = "../app/dev.zip"
-  # source = data.archive_file.lambda_hello_world.output_path
-
   etag = filemd5("../app/dev.zip")
 }
 
-resource "aws_lambda_function" "hello_world" {
+resource "aws_lambda_function" "terra_tick" {
   function_name = "TerraTick"
-
-  s3_bucket = aws_s3_bucket.lambda_bucket.id
-  s3_key    = aws_s3_object.lambda_hello_world.key
-
   runtime = "python3.10"
   handler = "handler.lambda_handler"
   timeout = 30
   source_code_hash = filebase64sha256("../app/dev.zip")
-
-  role = aws_iam_role.lambda_exec.arn
+  s3_bucket = aws_s3_bucket.lambda_bucket.id
+  s3_key    = aws_s3_object.lambda_deployment.key
+  role = aws_iam_role.lambda_execution_role.arn
 }
-
-
-resource "aws_iam_role_policy_attachment" "lambda_policy" {
-  role       = aws_iam_role.lambda_exec.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
-# resource "aws_cloudwatch_log_group" "hello_world" {
-#   name = "/aws/lambda/${aws_lambda_function.hello_world.function_name}"
-
-#   retention_in_days = 30
-# }
 
 data "aws_iam_policy_document" "assume_role" {
   statement {
@@ -67,93 +51,105 @@ data "aws_iam_policy_document" "assume_role" {
   }
 }
 
-resource "aws_iam_role" "lambda_exec" {
+resource "aws_iam_role_policy_attachment" "lambda_policy" {
+  role       = aws_iam_role.lambda_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+
+resource "aws_iam_role" "lambda_execution_role" {
   name               = "iam_for_lambda"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 }
 
-
-resource "aws_apigatewayv2_api" "lambda" {
-  name          = "serverless_lambda_gw"
-  protocol_type = "HTTP"
+resource "aws_api_gateway_rest_api" "apigw" {
+  name        = "terra-tick-api"
 }
 
-resource "aws_apigatewayv2_stage" "lambda" {
-  api_id = aws_apigatewayv2_api.lambda.id
+resource "aws_api_gateway_resource" "proxy_resource" {
+  parent_id   = aws_api_gateway_rest_api.apigw.root_resource_id
+  path_part   = "{proxy+}"
+  rest_api_id = aws_api_gateway_rest_api.apigw.id
+}
 
-  name        = "dev"
-  auto_deploy = true
+resource "aws_api_gateway_method" "any_method_root" {
+  rest_api_id = aws_api_gateway_rest_api.apigw.id
+  resource_id = aws_api_gateway_rest_api.apigw.root_resource_id
+  http_method = "ANY"
+    authorization = "NONE"
 
-  access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.api_gw.arn
+}
 
-    format = jsonencode({
-      requestId               = "$context.requestId"
-      sourceIp                = "$context.identity.sourceIp"
-      requestTime             = "$context.requestTime"
-      protocol                = "$context.protocol"
-      httpMethod              = "$context.httpMethod"
-      resourcePath            = "$context.resourcePath"
-      routeKey                = "$context.routeKey"
-      status                  = "$context.status"
-      responseLength          = "$context.responseLength"
-      integrationErrorMessage = "$context.integrationErrorMessage"
-      end = "$context.awsEndpointRequestId"
-      end2 = "$context.awsEndpointRequestId2"
-      }
-    )
+resource "aws_api_gateway_method" "any_method_proxy" {
+  rest_api_id = aws_api_gateway_rest_api.apigw.id
+    authorization = "NONE"
+  resource_id = aws_api_gateway_resource.proxy_resource.id
+  http_method = "ANY"
+}
+
+ resource "aws_api_gateway_integration" "proxy_integration" { 
+    rest_api_id = aws_api_gateway_rest_api.apigw.id
+    resource_id = aws_api_gateway_resource.proxy_resource.id
+    uri = aws_lambda_function.terra_tick.invoke_arn
+    type                   = "AWS_PROXY"
+    http_method = aws_api_gateway_method.any_method_proxy.http_method
+    passthrough_behavior   = "NEVER"
+    integration_http_method = "POST"
+  }
+
+   resource "aws_api_gateway_integration" "root_integration" { 
+    rest_api_id = aws_api_gateway_rest_api.apigw.id
+    resource_id = aws_api_gateway_rest_api.apigw.root_resource_id
+    uri = aws_lambda_function.terra_tick.invoke_arn
+    type                   = "AWS_PROXY"
+    http_method = aws_api_gateway_method.any_method_root.http_method
+    passthrough_behavior   = "NEVER"
+    integration_http_method = "POST"
+  }
+
+resource "aws_api_gateway_deployment" "app_deployment" {
+  rest_api_id = aws_api_gateway_rest_api.apigw.id
+
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_rest_api.apigw.root_resource_id,
+      aws_api_gateway_resource.proxy_resource.id,
+      aws_api_gateway_method.any_method_root.id,
+      aws_api_gateway_method.any_method_proxy.id,
+      aws_api_gateway_integration.root_integration.id,
+      aws_api_gateway_integration.proxy_integration.id,
+    ]))
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
-resource "aws_apigatewayv2_integration" "hello_world" {
-  api_id = aws_apigatewayv2_api.lambda.id
-
-  integration_uri    = aws_lambda_function.hello_world.invoke_arn
-  integration_type   = "AWS_PROXY"
-  integration_method = "POST"
-  request_parameters = {
-    "overwrite:path"    = "$request.path"
-  }
+resource "aws_api_gateway_stage" "app_stage" {
+  deployment_id = aws_api_gateway_deployment.app_deployment.id
+  rest_api_id   = aws_api_gateway_rest_api.apigw.id
+  stage_name    = "dev"
 }
 
-# resource "aws_apigatewayv2_route" "hello_world" {
-#   api_id = aws_apigatewayv2_api.lambda.id
-#   # route_key = "$default"
-#   route_key = "ANY /{proxy+}"
-#   target    = "integrations/${aws_apigatewayv2_integration.hello_world.id}"
-# }
-resource "aws_apigatewayv2_route" "hello_world" {
-  api_id = aws_apigatewayv2_api.lambda.id
-  # route_key = "$default"
-  route_key = "$default"
-  target    = "integrations/${aws_apigatewayv2_integration.hello_world.id}"
-}
-
-
-resource "aws_cloudwatch_log_group" "api_gw" {
-  name = "/aws/api_gw/${aws_apigatewayv2_api.lambda.name}"
-
-  retention_in_days = 30
-}
-
-resource "aws_lambda_permission" "api_gw" {
+resource "aws_lambda_permission" "app_api_permission" {
   statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.hello_world.function_name
+  function_name = aws_lambda_function.terra_tick.function_name
   principal     = "apigateway.amazonaws.com"
 
-  source_arn = "${aws_apigatewayv2_api.lambda.execution_arn}/*/*"
+  source_arn = "${aws_api_gateway_rest_api.apigw.execution_arn}/*/*"
 }
 
 output "app_url" {
   description = "Base URL for API Gateway stage."
 
-  value = aws_apigatewayv2_stage.lambda.invoke_url
+  value = aws_api_gateway_stage.app_stage.invoke_url
 }
 
 
 output "function_name" {
   description = "Name of the Lambda function."
 
-  value = aws_lambda_function.hello_world.function_name
+  value = aws_lambda_function.terra_tick.function_name
 }

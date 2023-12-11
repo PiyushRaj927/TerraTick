@@ -3,14 +3,14 @@ TerraTick is your cloud-based personal clock. It's designed for simplicity and f
 
 ![](https://imgs.xkcd.com/comics/6_6_time.png)
 <!-- table of contents -->
-
+ 
 # Features
 - A shareable standard clock 
 - Serverless Infrastructure
 - Auto Scaling
 - Monitoring and Logging
 # Demo
-
+![](images/demo.png)
 # Tech Stack
 - Flask: API framework.
 - Zappa: serverless framework for Flask app.
@@ -48,10 +48,6 @@ terraform init
 terraform apply
 ```
 
-to test the deployment run :
-```shell
-curl -L $(terraform output app_url)
-```
 
 Visit the `app_url` provided by Terraform in your web browser
 
@@ -63,7 +59,7 @@ terraform destroy
 # Contributions
 Feel free to open issues with your suggestions or ideas.
 
-### Note:  TerraTick was built for learning AWS Lambda. I plan to add new features as per the roadmap to further explore DevOps and SRE practices. The exact product?¯\\_(ツ)_/¯ Well, I figuring that out as I go! 
+### Note:  TerraTick was built for learning AWS Lambda. I plan to add new features as per the roadmap to further explore DevOps and SRE practices. The exact product? ¯\\_(ツ)_/¯ Well, I figuring that out as I go! 
 
 
 

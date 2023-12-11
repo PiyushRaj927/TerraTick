@@ -6,3 +6,10 @@ services:
       dockerfile: Dockerfile
     volumes:
     - ./app:/terratick
+  dev_server:
+    image: nikolaik/python-nodejs:python3.10-nodejs20
+    command: sleep infinity
+    volumes:
+      - ./app:/terratick
+    ports:
+      - "5000:5000"
